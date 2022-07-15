@@ -23,6 +23,8 @@ class DalyBMSBluetooth(DalyBMS):
         self.mac_address = mac_address
         self.logger.info("Set up Bleak client, adapter %s" % adapter) 
         self.client = BleakClient(self.mac_address, device=adapter, timeout=15)
+        self.handle_start_notify = None
+        self.handle_write_gatt_char = None
 
     async def connect(self):
         """
@@ -50,8 +52,15 @@ class DalyBMSBluetooth(DalyBMS):
             self.logger.debug("Bluetooth connection failed")
             return False
         self.logger.info("Bluetooth connected")
-        await self.client.start_notify(17, self._notification_callback)
-        await self.client.write_gatt_char(48, bytearray(b""))
+        await self.client.get_services()
+        for service in self.client.services:
+            for characteristic in service.characteristics:
+                if service.description == 'Vendor specific':
+                    if 'read' in characteristic.properties and 'notify' in characteristic.properties:
+                        self.handle_start_notify = characteristic.handle
+                    elif 'read' in characteristic.properties and 'write' in characteristic.properties and 'write-without-response' in characteristic.properties:
+                        self.handle_write_gatt_char = characteristic.handle
+        await self.client.start_notify(self.handle_start_notify, self._notification_callback)
 
     async def disconnect(self):
         """
@@ -126,7 +135,7 @@ class DalyBMSBluetooth(DalyBMS):
             self.logger.info("Connecting...")
             await self.client.connect()
 
-        await self.client.write_gatt_char(15, value)
+        await self.client.write_gatt_char(self.handle_write_gatt_char, value)
         self.logger.debug("Waiting...")
         try:
             result = await asyncio.wait_for(self.response_cache[command]["future"], 5)
