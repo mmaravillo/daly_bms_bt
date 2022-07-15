@@ -107,19 +107,14 @@ class DalyBMSBluetooth(DalyBMS):
     def _notification_callback(self, handle, data):
         self.logger.debug("handle %s, data %s, len %s" % (handle, repr(data), len(data)))
         responses = []
-        if len(data) == 13:
-            if int.from_bytes(self._calc_crc(data[:12]), 'little') != data[12]:
-                self.logger.info("Return from BMS: CRC wrong")
-                return
-            responses.append(data)
-        elif len(data) == 26:
-            if (int.from_bytes(self._calc_crc(data[:12]), 'little') != data[12]) or (int.from_bytes(self._calc_crc(data[13:25]), 'little') != data[25]):
-                self.logger.info("Return from BMS: CRC wrong")
-                return
-            responses.append(data[:13])
-            responses.append(data[13:])
+        if (len(data) % 13) == 0:
+            for i in range(0, len(data), 13):
+                if (int.from_bytes(self._calc_crc(data[i:i+12]), 'little') != data[i+12]):
+                    self.logger.info("Return from BMS: CRC wrong")
+                    return
+                responses.append(data[i:i+13])
         else:
-            self.logger.info("did not receive 13 or 26 bytes, not implemented bytes: %i" % len(data))
+            self.logger.info("did not receive bytes multiple of 13, not implemented bytes: %i" % len(data))
         for response_bytes in responses:
             command = response_bytes[2:3].hex()
             if self.response_cache[command]["done"] is True:
